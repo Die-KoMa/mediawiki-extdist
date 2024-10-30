@@ -5,3 +5,6 @@ extdist.log
 extdist.pid
 *.pyc
 __pycache__
+#*#
+*~
+/result

@@ -25,7 +25,10 @@ import random
 import requests
 import subprocess
 import sys
+import shutil
 import traceback
+import argparse
+import tempfile
 
 
 class TarballGenerator(object):
@@ -135,7 +138,7 @@ class TarballGenerator(object):
         """
         return subprocess.check_output(args, **kwargs).decode()
 
-    def update_extension(self, ext):
+    def update_extension(self, ext, versions=None):
         """
         Fetch an extension's updates, and
         create new tarballs if needed
@@ -148,7 +151,7 @@ class TarballGenerator(object):
             logging.debug('Cloning %s' % ext)
             self.shell_exec(['git', 'clone', repo_url, ext])
             pass
-        for branch in self.supported_versions:
+        for branch in (versions or self.supported_versions):
             os.chdir(full_path)
             logging.info('Creating %s for %s' % (branch, ext))
             # In case GIT_URL has changed
@@ -175,7 +178,7 @@ class TarballGenerator(object):
             # Gets short hash of HEAD
             rev = self.shell_exec(['git', 'rev-parse', '--short=7', 'HEAD']).strip()
             # filename rev must be exactly 7 characters to match MW extension. (T365416)
-            tarball_fname = '%s-%s-%s.tar.gz' % (ext, branch, rev[:7])
+            tarball_fname = '%s-%s.tar.gz' % (ext, branch)
             if not self.force and os.path.exists(os.path.join(self.DIST_PATH, tarball_fname)):
                 logging.debug('No updates to branch, tarball already exists.')
                 continue
@@ -226,7 +229,7 @@ class TarballGenerator(object):
         tarballs = glob.glob(os.path.join(self.EXT_PATH, '*.tar.gz'))
         for tar in tarballs:
             fname = tar.split('/')[-1]
-            os.rename(tar, os.path.join(self.DIST_PATH, fname))
+            shutil.move(tar, os.path.join(self.DIST_PATH, fname))
         logging.info('Finished update for %s' % ext)
 
         if random.randint(0, 99) == 0:
@@ -255,7 +258,7 @@ class TarballGenerator(object):
             f.write(str(os.getpid()))
         logging.info('Creating pid file')
 
-    def run(self, repos=None):
+    def run(self, repos=None, versions=None):
         self.init()
         if not repos:
             repos = self.repo_list
@@ -263,7 +266,7 @@ class TarballGenerator(object):
         logging.info('Starting update of all %s...' % self.REPO_TYPE)
         for repo in repos:
             try:
-                self.update_extension(repo)
+                self.update_extension(repo, versions=versions)
             except KeyboardInterrupt:
                 logging.error(traceback.format_exc())
                 sys.exit(1)
@@ -274,33 +277,31 @@ class TarballGenerator(object):
 
 
 def main():
-    # Load our config from JSON
-    conf = None
-    skins = '--skins' in sys.argv
-    etc_path = '/etc/skindist.conf' if skins else '/etc/extdist.conf'
-    local_fname = 'skinconf.json' if skins else 'conf.json'
-    if os.path.exists(etc_path):
-        with open(etc_path, 'r') as f:
-            conf = json.load(f)
-    elif os.path.exists(os.path.join(os.path.dirname(__file__), local_fname)):
-        with open(os.path.join(os.path.dirname(__file__), local_fname), 'r') as f:
-            conf = json.load(f)
-    else:
-        print('extdist is not configured properly.')
-        quit()
-    if '--all' in sys.argv:
-        repos = []
-    elif skins:
-        repos = ['Vector']
-    else:
-        repos = ['VisualEditor']
-    for arg in sys.argv:
-        if arg.startswith('--repo'):
-            repos.append(arg.split('=', 1)[1])
-    repo_type = 'skins' if skins else 'extensions'
-    force = '--force' in sys.argv
-    generator = TarballGenerator(conf, repo_type=repo_type, force=force)
-    generator.run(repos=repos)
+    with tempfile.TemporaryDirectory() as src_path:
+      # Load our config from JSON
+      conf = {
+          "API_URL" : "https://www.mediawiki.org/w/api.php",
+          "GIT_URL" : "https://gerrit.wikimedia.org/r/mediawiki/extensions/%s",
+          "DIST_PATH" : None,
+          "SRC_PATH" : src_path,
+          "PID_FILE" : "extdist.pid",
+          "LOG_FILE" : "extdist.log",
+          "VERSIONS" : None,
+      }
+
+      parser = argparse.ArgumentParser(prog="mediawiki-extdist",
+                                       description="packages MediaWiki extension tarballs")
+      parser.add_argument('--force', action='store_true')
+      parser.add_argument('--extension', action='append')
+      parser.add_argument('--mw-version', action='append')
+      parser.add_argument('--output', required=True)
+
+      arguments = parser.parse_args()
+      conf["DIST_PATH"] = arguments.output
+
+      repo_type = 'extensions'
+      generator = TarballGenerator(conf, repo_type=repo_type, force=arguments.force)
+      generator.run(repos=arguments.extension, versions=arguments.mw_version)
 
 
 if __name__ == '__main__':
