@@ -30,29 +30,28 @@
         self.overlays.default
       ];
 
-      outputsBuilder =
-        channels:
-        let
-          system = channels.nixpkgs.system;
-        in
-        {
-          devShells.default =
-            let
-              pkgs = channels.nixpkgs;
-              poetryEnv = pkgs.poetry2nix.mkPoetryEnv { projectDir = ./.; };
-            in
-            poetryEnv.env.overrideAttrs (oldAttrs: {
-              buildInputs = with pkgs; [
-                black
-                poetry
-              ];
-            });
+      outputsBuilder = channels: {
+        devShells.default =
+          let
+            pkgs = channels.nixpkgs;
+            poetryEnv = pkgs.poetry2nix.mkPoetryEnv { projectDir = ./.; };
+          in
+          poetryEnv.env.overrideAttrs (oldAttrs: {
+            buildInputs = with pkgs; [
+              black
+              poetry
+            ];
+          });
 
-          packages = exportPackages { inherit (self.overlays) default; } channels;
+        packages = exportPackages { inherit (self.overlays) default; } channels;
+      };
+
+      overlays = {
+        default = final: prev: {
+          mediawiki-extdist = final.poetry2nix.mkPoetryApplication { projectDir = ./.; };
         };
 
-      overlays.default = final: prev: {
-        mediawiki-extdist = final.poetry2nix.mkPoetryApplication { projectDir = ./.; };
+        poetry2nix = poetry2nix.overlays.default;
       };
 
     };
