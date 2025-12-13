@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     utils.url = "github:gytis-ivaskevicius/flake-utils-plus";
     poetry2nix = {
       url = "github:nix-community/poetry2nix";
@@ -14,7 +14,6 @@
   outputs =
     {
       self,
-      nixpkgs,
       utils,
       poetry2nix,
       ...
