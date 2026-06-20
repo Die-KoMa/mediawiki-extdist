@@ -1,57 +1,77 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
-    utils.url = "github:gytis-ivaskevicius/flake-utils-plus";
-    poetry2nix = {
-      url = "github:nix-community/poetry2nix";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        flake-utils.follows = "utils/flake-utils";
-      };
-    };
+    nixpkgs.url = "https://channels.nixos.org/nixos-26.05/nixexprs.tar.xz";
   };
 
   outputs =
-    {
+    inputs@{
       self,
-      utils,
-      poetry2nix,
-      ...
-    }@inputs:
+      nixpkgs,
+    }:
     let
-      inherit (utils.lib) mkFlake exportPackages;
+      forAllSystems =
+        f:
+        nixpkgs.lib.genAttrs
+          [
+            "x86_64-linux"
+            "aarch64-linux"
+          ]
+          (
+            system:
+            let
+              pkgs = import nixpkgs {
+                inherit system;
+                overlays = [
+                  self.overlays.default
+                ];
+              };
+
+            in
+            f pkgs
+          );
     in
-    mkFlake {
-      inherit self inputs;
-
-      channels.nixpkgs.overlaysBuilder = channels: [
-        poetry2nix.overlays.default
-        self.overlays.default
-      ];
-
-      outputsBuilder = channels: {
-        devShells.default =
-          let
-            pkgs = channels.nixpkgs;
-            poetryEnv = pkgs.poetry2nix.mkPoetryEnv { projectDir = ./.; };
-          in
-          poetryEnv.env.overrideAttrs (oldAttrs: {
-            buildInputs = with pkgs; [
-              black
-              poetry
-            ];
-          });
-
-        packages = exportPackages { inherit (self.overlays) default; } channels;
-      };
-
-      overlays = {
-        default = final: prev: {
-          mediawiki-extdist = final.poetry2nix.mkPoetryApplication { projectDir = ./.; };
+    {
+      devShells = forAllSystems (pkgs: {
+        default = pkgs.mkShell {
+          inputsFrom = [ pkgs.mediawiki-extdist ];
+          packages = [
+            pkgs.black
+            pkgs.poetry
+          ];
         };
 
-        poetry2nix = poetry2nix.overlays.default;
-      };
+      });
 
+      packages = forAllSystems (pkgs: {
+        inherit (pkgs) mediawiki-extdist;
+      });
+
+      overlays = {
+        default =
+          final: prev:
+          let
+            python = final.python3;
+          in
+          {
+            mediawiki-extdist = python.pkgs.buildPythonApplication {
+              name = "mediawiki-extdist";
+              version = "0.0.1";
+              src = ./.;
+              pyproject = true;
+
+              meta = {
+                license = final.lib.licenses.gpl3Plus;
+                mainProgram = "mediawiki-extdist";
+              };
+
+              build-system = [ python.pkgs.poetry-core ];
+              dependencies = final.lib.attrValues {
+                inherit (python.pkgs)
+                  requests
+                  ;
+              };
+            };
+          };
+      };
     };
 }

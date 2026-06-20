@@ -9,7 +9,7 @@ license = "GPL-3.0-or-later"
 mediawiki-extdist = "mediawiki_extdist:main"
 
 [tool.poetry.dependencies]
-python = "~3.11"
+python = "~3.13"
 requests = "^2.32"
 
 [build-system]
